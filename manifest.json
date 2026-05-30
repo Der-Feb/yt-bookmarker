@@ -35,7 +35,7 @@
       "24": "public/ext-icon.png",
       "32": "public/ext-icon.png"
     },
-    "default_title": "My YT Bookmarks",
+    "default_title": "YT Bookmarker",
     "default_popup": "popup.html"
   }
 }
