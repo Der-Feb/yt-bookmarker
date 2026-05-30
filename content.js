@@ -17,9 +17,11 @@
     }
   });
 
-  function newVideoLoaded() {
+  async function newVideoLoaded() {
     const bookmarkBtnExists =
       document.getElementsByClassName("bookmark-btn")[0];
+
+    currentVideoBookmarks = await loadBookmarks();
 
     if (!bookmarkBtnExists) {
       const bookmarkBtn = document.createElement("img");
@@ -41,23 +43,66 @@
         }
       }, 500);
     }
+
+    console.log(currentVideoBookmarks);
   }
 
   newVideoLoaded();
 
-  function addBookmarkEventHandler() {
+  async function addBookmarkEventHandler() {
+    // Safety check: Did the extension reload?
+    if (!chrome.runtime?.id) {
+      alert(
+        "Extension updated! Please refresh the page to continue bookmarking.",
+      );
+      return;
+    }
+
     const ytPlayer = document.getElementsByClassName("video-stream")[0];
     const currentTime = ytPlayer.currentTime;
+
+    const titleElement = document.querySelector(
+      "ytd-watch-metadata h1.ytd-watch-metadata",
+    );
+    const videoTitle = titleElement
+      ? titleElement.innerText.trim()
+      : "Unknown Video";
+
     const bookmark = {
       time: currentTime,
       description: "Bookmark at " + getTime(currentTime),
+      title: videoTitle,
     };
 
-    // save to chrome storage
-    chrome.storage.sync.set({
-      [currentVideo]: JSON.stringify(
-        [...currentVideoBookmarks, bookmark].sort((a, b) => a.time - b.time),
-      ),
+    try {
+      // save to chrome storage
+      chrome.storage.sync.set({
+        [currentVideo]: JSON.stringify(
+          [...currentVideoBookmarks, bookmark].sort((a, b) => a.time - b.time),
+        ),
+      });
+
+      currentVideoBookmarks = await loadBookmarks();
+      console.log(currentVideoBookmarks);
+    } catch (error) {
+      console.log(
+        "Storage failed. Context likely invalidated. Refresh the page.",
+        error,
+      );
+    }
+  }
+
+  function loadBookmarks() {
+    return new Promise((resolve) => {
+      // Safety check for async promise handling
+      if (!chrome.runtime?.id) {
+        resolve([]);
+        return;
+      }
+
+      chrome.storage.sync.get([currentVideo], (result) => {
+        resolve(result[currentVideo] ? JSON.parse(result[currentVideo]) : []);
+      });
     });
   }
 })();
