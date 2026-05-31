@@ -1,56 +1,84 @@
 (() => {
-  // 1. IMMEDIATE LOG TO VERIFY INJECTION
   console.log("EXTENSION ALIVE: content.js has successfully injected!");
 
   let currentVideo = new URLSearchParams(window.location.search).get("v");
   let currentVideoBookmarks = [];
+  let isSearchingForControls = false;
 
   chrome.runtime.onMessage.addListener((obj, sender, res) => {
-    const { type, videoId } = obj;
+    const { type, videoId, value } = obj;
+
     if (type === "NEW") {
       currentVideo = videoId;
-      console.log(
-        "Received message from background. Video ID is now:",
-        currentVideo,
-      );
+      isSearchingForControls = false;
       newVideoLoaded();
+    } else if (type === "PLAY") {
+      const ytPlayer = document.getElementsByClassName("video-stream")[0];
+      if (ytPlayer) {
+        ytPlayer.currentTime = value;
+        console.log("Jumping playback timestamp safely to:", value);
+      }
     }
   });
 
   async function newVideoLoaded() {
-    const bookmarkBtnExists =
-      document.getElementsByClassName("bookmark-btn")[0];
-
-    currentVideoBookmarks = await loadBookmarks();
-
-    if (!bookmarkBtnExists) {
-      const bookmarkBtn = document.createElement("img");
-      bookmarkBtn.src = chrome.runtime.getURL("public/bookmark.png");
-      bookmarkBtn.className = "ytp-button bookmark-btn";
-      bookmarkBtn.style.fontSize = "20px";
-
-      const appendButtonInterval = setInterval(() => {
-        const ytRightControls =
-          document.getElementsByClassName("ytp-right-controls")[0];
-
-        if (ytRightControls) {
-          clearInterval(appendButtonInterval);
-          console.log("Found controls! Appending button now.");
-          ytRightControls.appendChild(bookmarkBtn);
-          bookmarkBtn.addEventListener("click", addBookmarkEventHandler);
-        } else {
-          console.log("⏳ Still looking for ytp-right-controls...");
-        }
-      }, 500);
+    if (
+      document.getElementsByClassName("bookmark-btn")[0] ||
+      isSearchingForControls
+    ) {
+      return;
     }
 
-    console.log(currentVideoBookmarks);
+    isSearchingForControls = true;
+    currentVideoBookmarks = await loadBookmarks();
+
+    const bookmarkBtn = document.createElement("button");
+    bookmarkBtn.className = "ytp-button bookmark-btn";
+    bookmarkBtn.title = "Click to bookmark this current timestamp";
+
+    bookmarkBtn.style.background = "none";
+    bookmarkBtn.style.border = "none";
+    bookmarkBtn.style.padding = "0";
+    bookmarkBtn.style.width = "46px";
+    bookmarkBtn.style.height = "100%";
+    bookmarkBtn.style.display = "inline-flex";
+    bookmarkBtn.style.alignItems = "center";
+    bookmarkBtn.style.justifyContent = "center";
+    bookmarkBtn.style.cursor = "pointer";
+
+    const btnIcon = document.createElement("img");
+    btnIcon.src = chrome.runtime.getURL("public/bookmark.png");
+    btnIcon.style.width = "24px";
+    btnIcon.style.height = "24px";
+    btnIcon.style.objectFit = "contain";
+
+    bookmarkBtn.appendChild(btnIcon);
+
+    const appendButtonInterval = setInterval(() => {
+      const ytRightControls =
+        document.getElementsByClassName("ytp-right-controls")[0];
+
+      if (ytRightControls) {
+        clearInterval(appendButtonInterval);
+
+        if (!document.getElementsByClassName("bookmark-btn")[0]) {
+          ytRightControls.appendChild(bookmarkBtn);
+          bookmarkBtn.addEventListener("click", addBookmarkEventHandler);
+        }
+
+        isSearchingForControls = false;
+      } else {
+        if (!currentVideo) {
+          clearInterval(appendButtonInterval);
+          isSearchingForControls = false;
+        }
+      }
+    }, 500);
   }
 
   newVideoLoaded();
 
   async function addBookmarkEventHandler() {
-    // Safety check: Did the extension reload?
     if (!chrome.runtime?.id) {
       alert(
         "Extension updated! Please refresh the page to continue bookmarking.",
@@ -75,7 +103,6 @@
     };
 
     try {
-      // save to chrome storage
       chrome.storage.sync.set({
         [currentVideo]: JSON.stringify(
           [...currentVideoBookmarks, bookmark].sort((a, b) => a.time - b.time),
@@ -83,7 +110,6 @@
       });
 
       currentVideoBookmarks = await loadBookmarks();
-      console.log(currentVideoBookmarks);
     } catch (error) {
       console.log(
         "Storage failed. Context likely invalidated. Refresh the page.",
@@ -94,7 +120,6 @@
 
   function loadBookmarks() {
     return new Promise((resolve) => {
-      // Safety check for async promise handling
       if (!chrome.runtime?.id) {
         resolve([]);
         return;
